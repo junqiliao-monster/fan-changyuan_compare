@@ -9,7 +9,7 @@ all: clean package
 
 # 使用PyInstaller打包程序
 package:
-	pyinstaller -F -p $(LIB_PATH) $(FILE_NAME)
+	pyinstaller --hidden-import pyexcel_xls --hidden-import pyexcel_xlsx --hidden-import pyexcel_xlsxw -F -p $(LIB_PATH) $(FILE_NAME)
 
 # 删除dist、build目录和.spec文件
 clean:
