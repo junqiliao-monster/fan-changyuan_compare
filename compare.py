@@ -9,8 +9,8 @@ from openpyxl.styles import Font
 
 
 # folder_path = os.getcwd() #用此方式获取当前工作目录在打包exe后，莫名变成系统用户的主目录，并没有获取当前目录
-folder_path = os.path.dirname(os.path.abspath(sys.argv[0]))
-# folder_path = "D:\\liaojq\\test\\12月各部门考勤"
+# folder_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+folder_path = "D:\\liaojq\\test\\12月各部门考勤"
 # print("folder_path = ", folder_path)
 xl_sx_files = []
 xl_s_files = []
@@ -24,14 +24,16 @@ Compare_indices = {'姓名': None, '全勤': None, '出勤天数': None, '平时
                    '事假（天）': None, '病假（天）': None, '年假（天）': None}
 # 存储系统汇总表需要的列数
 system_indices = {'姓名': None, '全勤': None, '实出勤天数': None, '加班1.5': None, '加班2.0': None, '加班3.0': None, '夜班次数': None,
-                  '迟到次数': None, '事假天数': None, '病假天数': None, '年休假天数': None}
+                  '迟到次数': None, '事假天数': None, '病假天数': None, '年休假天数': None, '转调休加班': None}
 # 存储汇总表右边的标题
 titleList_right = ['姓名', '全勤', '实出勤天数', '平时', '周末', '法定', '晚餐补贴', '迟到', '事假', '病假', '年假']
 # 存储汇总表左边的标题
-titleList_left = ['姓名', '全勤', '实出勤天数', '加班1.5', '加班2.0', '加班3.0', '夜班次数', '迟到次数', '事假天数', '病假天数', '年休假天数']
+titleList_left = ['姓名', '全勤', '实出勤天数', '加班1.5', '加班2.0', '加班3.0', '夜班次数', '迟到次数', '事假天数', '病假天数', '年休假天数', '转调休加班']
 # 存储要复制的信息
 data = []
 data_name = []
+
+data_len = len(titleList_left)
 
 
 # 获取所需要的行数（根据名字）
@@ -126,14 +128,7 @@ def compare_fun(workbook, sheet_name, file_name):
     rows_with_job = get_need_row(file_name)
 
     # 获取需要的列数
-    if '考勤汇总' in str(file_name):
-        indices = system_indices
-        data_len = 1
-    else:
-        indices = Compare_indices
-        title_list = titleList_right
-        data_len = len(title_list)
-    get_need_cell(rows_with_job, indices, file_name)
+    get_need_cell(rows_with_job, Compare_indices, file_name)
 
     # 给表创建一个标题
     ws = workbook[sheet_name]
@@ -149,8 +144,8 @@ def compare_fun(workbook, sheet_name, file_name):
     start_row = 2
     # 循环把一行单元格数据，放到data，然后粘贴到另一个表
     for row in rows_with_job:
-        for cell in indices.values():
-            if cell == list(indices.values())[0]:
+        for cell in Compare_indices.values():
+            if cell == list(Compare_indices.values())[0]:
                 data_name.append(source_sheet.cell(row=row, column=cell).value)
             data.append(source_sheet.cell(row=row, column=cell).value)
         # print(data)
@@ -163,6 +158,7 @@ def compare_fun(workbook, sheet_name, file_name):
         data.clear()
     source_wb.close()
     pass
+
     # 根据名字创建字典
     data_name_indices = {item: None for item in data_name}
     # print(data_name_indices)
@@ -294,7 +290,7 @@ def compare_summary_fun():
         for row in sheet.iter_rows(min_row=2):
             # 对比每一对列
             for i in range(1, 11):  # 从A列到K列，总共11列
-                if row[i].value != row[i + 12].value:  # A列和M列的索引差为12，B列和N列的索引差为12，以此类推
+                if row[i].value != row[i + data_len + 1].value:  # A列和M列的索引差为12，B列和N列的索引差为12，以此类推
                     # 如果不一致，将整行标黄
                     # print(row[i].value, row[i + 12].value)
                     # for cell in row:
@@ -302,8 +298,8 @@ def compare_summary_fun():
                     # 将不一致的单元格标红
                     row[i].fill = red_fill
                     row[i].font = white_font
-                    row[i + 12].fill = red_fill
-                    row[i + 12].font = white_font
+                    row[i + data_len + 1].fill = red_fill
+                    row[i + data_len + 1].font = white_font
     last_wb.save(os.path.join(folder_path, compare_summary_sheet))
 
 
