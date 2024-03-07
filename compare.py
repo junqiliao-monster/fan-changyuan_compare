@@ -4,13 +4,12 @@ import sys
 import pyexcel as p
 from openpyxl import load_workbook
 from openpyxl import Workbook
-from openpyxl.styles import PatternFill
-from openpyxl.styles import Font
-
+from openpyxl.styles import PatternFill, Font, Border, Side
 
 # folder_path = os.getcwd() #用此方式获取当前工作目录在打包exe后，莫名变成系统用户的主目录，并没有获取当前目录
 # folder_path = os.path.dirname(os.path.abspath(sys.argv[0]))
-folder_path = "D:\\liaojq\\test\\12月各部门考勤"
+folder_path = "D:\\liaojq\\wechat\\20240306生产考勤\\生产考勤"
+
 # print("folder_path = ", folder_path)
 xl_sx_files = []
 xl_s_files = []
@@ -20,7 +19,7 @@ need_del_files = []
 compare_summary_sheet = "核对结果.xlsx"
 
 # 存储需要的列数
-Compare_indices = {'姓名': None, '全勤': None, '出勤天数': None, '平时': None, '周末': None, '法定': None, '晚餐补贴': None, '迟到': None,
+Compare_indices = {'姓名': None, '全勤': None, '出勤': None, '平时': None, '周末': None, '法定': None, '晚餐补贴': None, '迟到': None,
                    '事假（天）': None, '病假（天）': None, '年假（天）': None}
 # 存储系统汇总表需要的列数
 system_indices = {'姓名': None, '全勤': None, '实出勤天数': None, '加班1.5': None, '加班2.0': None, '加班3.0': None, '夜班次数': None,
@@ -34,6 +33,8 @@ data = []
 data_name = []
 
 data_len = len(titleList_left)
+# 总表实出勤天数
+system_workDay = 31
 
 
 # 获取所需要的行数（根据名字）
@@ -55,7 +56,7 @@ def from_name_get_need_row(indices, file_name):
 # 获取所需要的行数（根据工号列，找到包含2200的行）
 def get_need_row(file_name):
     source_wb = load_workbook(os.path.join(folder_path, file_name), data_only=True)
-    source_sheet = source_wb.active
+    source_sheet = source_wb.worksheets[0]
     # 包含工号的列序号
     job_num_cells = []
     # 包含工号的列序号的行号
@@ -110,7 +111,7 @@ def get_need_row(file_name):
 # 根据获取需要的列数（根据所需要的标题，获取列数，只遍历rows_with_job最后一行之前内容）
 def get_need_cell(rows_with_job, indices, file_name):
     source_wb = load_workbook(os.path.join(folder_path, file_name), data_only=True)
-    source_sheet = source_wb.active
+    source_sheet = source_wb.worksheets[0]
 
     for row in source_sheet.iter_rows(max_row=min(rows_with_job)-1, values_only=True):
         for cell in row:
@@ -143,12 +144,15 @@ def compare_fun(workbook, sheet_name, file_name):
 
     start_row = 2
     # 循环把一行单元格数据，放到data，然后粘贴到另一个表
+    print(Compare_indices)
     for row in rows_with_job:
         for cell in Compare_indices.values():
+            # print(row,cell)
             if cell == list(Compare_indices.values())[0]:
                 data_name.append(source_sheet.cell(row=row, column=cell).value)
+
             data.append(source_sheet.cell(row=row, column=cell).value)
-        # print(data)
+        print(data)
         for i, value in enumerate(data):
             if value is None:
                 ws.cell(row=start_row, column=i + 1 + data_len + 1, value=0)
@@ -172,8 +176,10 @@ def compare_fun(workbook, sheet_name, file_name):
 
     start_row = 2
     # 循环把一行单元格数据，放到data，然后粘贴到另一个表
+    system_workDay = input("实出勤天数：  输入0表示系统表获取  输入其他数字作为输入天数")
+
     for row in rows_with_name_summary:
-        for cell in system_indices.values():
+        for key, cell in system_indices.items():
             data.append(source_sheet.cell(row=row, column=cell).value)
         # print(data)
         for i, value in enumerate(data):
@@ -283,7 +289,16 @@ def compare_summary_fun():
 
     red_fill = PatternFill(start_color="FFFF0000", end_color="FFFF0000", fill_type="solid")
     yellow_fill = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
+    white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+    no_fill = PatternFill(fill_type=None)
+
+    black_font = Font(color="000000")
     white_font = Font(color="FFFFFF")
+
+    thin_border = Border(left=Side(style='thin'),
+                         right=Side(style='thin'),
+                         top=Side(style='thin'),
+                         bottom=Side(style='thin'))
 
     # print("into compare_summary_fun")
     for sheet in last_wb.worksheets:
@@ -291,6 +306,11 @@ def compare_summary_fun():
             # 对比每一对列
             for i in range(1, 11):  # 从A列到K列，总共11列
                 if row[i].value != row[i + data_len + 1].value:  # A列和M列的索引差为12，B列和N列的索引差为12，以此类推
+                    if i == 2:
+                        if row[i].value == row[i + data_len + 1].value+1:
+                            continue
+                    if row[i].value is None and row[i + data_len + 1].value == 0:
+                        continue
                     # 如果不一致，将整行标黄
                     # print(row[i].value, row[i + 12].value)
                     # for cell in row:
@@ -300,6 +320,27 @@ def compare_summary_fun():
                     row[i].font = white_font
                     row[i + data_len + 1].fill = red_fill
                     row[i + data_len + 1].font = white_font
+
+    for sheet in last_wb.worksheets:
+        for row in sheet.iter_rows(min_row=2):
+            # print(row[11].value, row[16].value + row[17].value)
+            if row[11].value == row[16].value+row[17].value:
+                row[3].fill = no_fill
+                row[3].font = black_font
+                # row[3].border = thin_border
+
+                row[4].fill = no_fill
+                row[4].font = black_font
+                # row[4].border = thin_border
+
+                row[3 + data_len + 1].fill = no_fill
+                row[3 + data_len + 1].font = black_font
+                # row[3 + data_len + 1].border = thin_border
+
+                row[4 + data_len + 1].fill = no_fill
+                row[4 + data_len + 1].font = black_font
+                # row[4 + data_len + 1].border = thin_border
+
     last_wb.save(os.path.join(folder_path, compare_summary_sheet))
 
 
