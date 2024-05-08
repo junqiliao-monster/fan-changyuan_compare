@@ -8,7 +8,7 @@ from openpyxl.styles import PatternFill, Font, Border, Side
 
 # folder_path = os.getcwd() #用此方式获取当前工作目录在打包exe后，莫名变成系统用户的主目录，并没有获取当前目录
 # folder_path = os.path.dirname(os.path.abspath(sys.argv[0]))
-folder_path = "D:\\liaojq\\wechat\\20240306生产考勤\\生产考勤"
+folder_path = "C:\\Users\\Administrator\\Desktop\\Temporary file\\部门考勤"
 
 # print("folder_path = ", folder_path)
 xl_sx_files = []
@@ -17,6 +17,7 @@ summary_files = []
 need_compare_files = []
 need_del_files = []
 compare_summary_sheet = "核对结果.xlsx"
+not_need_files = "备份"
 
 # 存储需要的列数
 Compare_indices = {'姓名': None, '全勤': None, '出勤': None, '平时': None, '周末': None, '法定': None, '晚餐补贴': None, '迟到': None,
@@ -35,6 +36,8 @@ data_name = []
 data_len = len(titleList_left)
 # 总表实出勤天数
 system_workDay = 31
+
+error_print = []
 
 
 # 获取所需要的行数（根据名字）
@@ -55,7 +58,13 @@ def from_name_get_need_row(indices, file_name):
 
 # 获取所需要的行数（根据工号列，找到包含2200的行）
 def get_need_row(file_name):
+
     source_wb = load_workbook(os.path.join(folder_path, file_name), data_only=True)
+
+    sheet_count = source_wb.sheet_count     # 查看有多少个工作表，正常应该是1个
+    if sheet_count > 1:
+        error_print.append(f"{file_name}有多个工作表")
+
     source_sheet = source_wb.worksheets[0]
     # 包含工号的列序号
     job_num_cells = []
@@ -70,12 +79,18 @@ def get_need_row(file_name):
 
     # 找到所有包含'工号'的列
     for row in source_sheet.iter_rows():
+        if not row:
+            error_print.append(f"{file_name}行数据有问题")
+            return 0
         for cell in row:
             if '工号' in str(cell.value):
                 job_num_cells.append(row.index(cell))
                 job_num_cells_row.append(cell.row)
 
     # 在每一个'工号'列中寻找'2200'
+    if job_num_cells is None:
+        error_print.append(f"{file_name}没有找到工号")
+        return 0
     for i, job_num_cell in enumerate(job_num_cells):
         count = 0
         for row in source_sheet.iter_rows(min_row=job_num_cells_row[i]):
@@ -87,6 +102,7 @@ def get_need_row(file_name):
 
     # 判断job_num_2200_cells的元素个数，返回相应的列序号
     if len(job_num_2200_cells) == 0 or len(job_num_2200_cells) >= 2:
+        error_print.append(f"{file_name}工号列序号有问题，可能有多个或者没有，返回默认第3列")
         job_num_2200_cell = 3  # 默认返回C列的序号
     else:
         job_num_2200_cell = job_num_2200_cells[0]  # 返回列表中的元素作为列序号
@@ -104,35 +120,48 @@ def get_need_row(file_name):
             need_row.append(cell.row)
 
     source_wb.close()
+    if need_row is None:
+        error_print.append(f"{file_name}的工号列{job_num_2200_cell}找不到2200")
+        return 0
     print(need_row)
     return need_row
 
 
-# 根据获取需要的列数（根据所需要的标题，获取列数，只遍历rows_with_job最后一行之前内容）
+# 根据获取需要的列数（根据所需要的标题，获取列数，只遍历rows_with_job最前一行之前内容（目的是为了找标题））
 def get_need_cell(rows_with_job, indices, file_name):
     source_wb = load_workbook(os.path.join(folder_path, file_name), data_only=True)
     source_sheet = source_wb.worksheets[0]
-
     for row in source_sheet.iter_rows(max_row=min(rows_with_job)-1, values_only=True):
         for cell in row:
             for header in indices.keys():
                 if header in str(cell):
                     indices[header] = row.index(cell) + 1
+
+    for key, value in indices.items():
+        if value == "" or value is None or value == [] or value == {}:
+            error_print.append(f"{file_name}, Key: {key}, Value: {value}")
+            return 0
+
     # indices = {header: 1000 if value is None else value for header, value in indices.items()}
     source_wb.close()
-    # print(indices)
+    print(indices)
     pass
+    return 1
 
 
-def compare_fun(workbook, sheet_name, file_name):
+# （创建的工作簿， 工作表， 需要核对的文件名）
+def compare_fun(workbook, sheet_name_in_compare_fun, file_name):
     # 获取所需要的行数
     rows_with_job = get_need_row(file_name)
+    if rows_with_job is None or rows_with_job == 0:
+        return 0
 
     # 获取需要的列数
-    get_need_cell(rows_with_job, Compare_indices, file_name)
+    if not get_need_cell(rows_with_job, Compare_indices, file_name):
+        return 0
 
     # 给表创建一个标题
-    ws = workbook[sheet_name]
+    ws = workbook[sheet_name_in_compare_fun]
     for i, value in enumerate(titleList_left):
         ws.cell(row=1, column=i + 1, value=value)
     for i, value in enumerate(titleList_right):
@@ -204,6 +233,8 @@ def get_filename_without_extension(file_path):
 def get_xls_or_sx_summary_files():
     global need_compare_files
     for file in os.listdir(folder_path):
+        if not_need_files in file:
+            continue
         if file.endswith(".xls"):
             file = get_filename_without_extension(file)
             # print(file)
@@ -212,7 +243,7 @@ def get_xls_or_sx_summary_files():
             need_del_files.append(file + '.xlsx')
 
     for file in os.listdir(folder_path):
-        if file == compare_summary_sheet:
+        if file == compare_summary_sheet or not_need_files in file:
             continue
         if file.endswith(".xlsx"):
             if "考勤汇总" in file:
@@ -226,62 +257,75 @@ def get_xls_or_sx_summary_files():
     if need_compare_files:
         print("需要核对的表：", need_compare_files)
     else:
-        for need_del_file in need_del_files:
-            os.remove(os.path.join(folder_path, need_del_file))
-        input("没有找到部门表，按任意键结束。。")
+        for get_need_del_file in need_del_files:
+            os.remove(os.path.join(folder_path, get_need_del_file))
+        error_print.append("没有找到部门表")
         sys.exit()
 
     if summary_files:
         print("系统导出的总表：", summary_files)
     else:
-        for need_del_file in need_del_files:
-            os.remove(os.path.join(folder_path, need_del_file))
-        input("没有找到系统总表，按任意键结束。。")
+        for get_need_del_file in need_del_files:
+            os.remove(os.path.join(folder_path, get_need_del_file))
+        error_print.append("没有找到系统总表")
         sys.exit()
 
 
 # 创建工作簿
 def compare_summary_file_create():
-    try:
-        work = load_workbook(os.path.join(folder_path, compare_summary_sheet))
-        print("核对结果.xlsx已存在！")
-        ret = input("输入0或1：   0->退出程序   1->覆盖")
-        if ret == '1':
-            pass
-        elif ret == '0':
-            work.close()
-            sys.exit()
-    except FileNotFoundError:
+    file_path = os.path.join(folder_path, compare_summary_sheet)    # 文件全路径
+    base_name = get_filename_without_extension(compare_summary_sheet)   # 文件名，无前缀后缀
+    backup_count = 1    # 备份计数
+
+    # 检查文件是否存在
+    if os.path.exists(file_path):
+        print(f"文件 {compare_summary_sheet} 已存在，备份！")
+        while True:
+            # 构造新的备份文件名
+            backup_name = f"{base_name}备份_{backup_count}.xlsx"
+            new_file_path = os.path.join(folder_path, backup_name)
+
+            # 如果新文件名也存在，递增备份编号并重试
+            if os.path.exists(new_file_path):
+                backup_count += 1
+                continue
+
+            # 加载现有的工作簿，并保存到新的备份文件名
+            work = load_workbook(file_path)
+            work.save(new_file_path)
+            print(f"备份已创建：{backup_name}")
+            break
+
         work = Workbook()
         print("创建工作簿：", compare_summary_sheet)
+
     return work
 
 
-# 创建核对工作表
+# 创建核对工作表（创建的工作簿，需要核对的文件名）
 def compare_summary_sheet_create(workbook, file_name):
     # 获取所有工作表名字
     sheet_names = workbook.sheetnames
     # print("工作簿里的表有：", sheet_names)
     # 获取要创建的工作表名字（去掉文件名后缀）
-    sheet_name = get_filename_without_extension(file_name) + "核对"
+    sheet_name_creat = get_filename_without_extension(file_name) + "核对"
     # 不存在则创建工作表
-    if sheet_name in sheet_names:
-        # print("工作表已存在：", sheet_name)
+    if sheet_name_creat in sheet_names:
+        # print("工作表已存在：", sheet_name_creat)
         # workbook.close()
         # return 0
-        workbook.remove(workbook[sheet_name])
+        workbook.remove(workbook[sheet_name_creat])
 
-    workbook.create_sheet(sheet_name)
-    # print("创建工作表", sheet_name)
+    workbook.create_sheet(sheet_name_creat)
+    # print("创建工作表", sheet_name_creat)
 
     # 删除空表
     for delSheet in sheet_names:
         if 'Sheet' in delSheet:
             workbook.remove(workbook[delSheet])
 
-    print(f"正在复制数据到[{sheet_name}]中。。。")
-    compare_fun(workbook, sheet_name, file_name)
-    return 1
+    print(f"正在复制数据到[{sheet_name_creat}]中。。。")
+    return sheet_name_creat
 
 
 def compare_summary_fun():
@@ -316,8 +360,10 @@ def compare_summary_fun():
                     # for cell in row:
                     #     cell.fill = yellow_fill
                     # 将不一致的单元格标红
-                    row[i].fill = red_fill
-                    row[i].font = white_font
+                    # 标红左边
+                    # row[i].fill = red_fill
+                    # row[i].font = white_font
+                    # 标红右边
                     row[i + data_len + 1].fill = red_fill
                     row[i + data_len + 1].font = white_font
 
@@ -347,7 +393,10 @@ def compare_summary_fun():
 get_xls_or_sx_summary_files()
 wb = compare_summary_file_create()
 for need_compare_file in need_compare_files:
-    compare_summary_sheet_create(wb, need_compare_file)
+    sheet_name = compare_summary_sheet_create(wb, need_compare_file)
+
+    if not compare_fun(wb, sheet_name, need_compare_file):
+        print(error_print)
 compare_summary_fun()
 for need_del_file in need_del_files:
     os.remove(os.path.join(folder_path, need_del_file))
