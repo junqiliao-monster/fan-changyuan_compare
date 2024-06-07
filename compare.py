@@ -7,8 +7,10 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Border, Side
 
 # folder_path = os.getcwd() #用此方式获取当前工作目录在打包exe后，莫名变成系统用户的主目录，并没有获取当前目录
-# folder_path = os.path.dirname(os.path.abspath(sys.argv[0]))
-folder_path = "C:\\Users\\Administrator\\Desktop\\Temporary file\\部门考勤"
+folder_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+# folder_path = "D:\\liaojq\\wechat\\20240606考勤"
+# folder_path = "C:\\Users\\Administrator\\Desktop\\Temporary file"
+# folder_path = "."
 
 # print("folder_path = ", folder_path)
 xl_sx_files = []
@@ -40,6 +42,15 @@ system_workDay = 31
 error_print = []
 
 
+# 异常退出
+def quit_print():
+
+    print(error_print)
+    for l_need_del_file in need_del_files:
+        os.remove(os.path.join(folder_path, l_need_del_file))
+    sys.exit()
+
+
 # 获取所需要的行数（根据名字）
 def from_name_get_need_row(indices, file_name):
     source_wb = load_workbook(os.path.join(folder_path, file_name), data_only=True)
@@ -52,7 +63,7 @@ def from_name_get_need_row(indices, file_name):
                     indices[header] = cell.row
 
     source_wb.close()
-    print(indices)
+    # print(indices)
     return indices
 
 
@@ -61,7 +72,7 @@ def get_need_row(file_name):
 
     source_wb = load_workbook(os.path.join(folder_path, file_name), data_only=True)
 
-    sheet_count = source_wb.sheet_count     # 查看有多少个工作表，正常应该是1个
+    sheet_count = len(source_wb.sheetnames)     # 查看有多少个工作表，正常应该是1个
     if sheet_count > 1:
         error_print.append(f"{file_name}有多个工作表")
 
@@ -76,6 +87,10 @@ def get_need_row(file_name):
     job_num_2200_cell = None
     # 真正需要的行数
     need_row = []
+    # 记录当前工号含2200的最大次数
+    max_2200 = 0
+    # 记录当前工号含2200的最大次数的序号数
+    max_2200_num = 0
 
     # 找到所有包含'工号'的列
     for row in source_sheet.iter_rows():
@@ -88,6 +103,8 @@ def get_need_row(file_name):
                 job_num_cells_row.append(cell.row)
 
     # 在每一个'工号'列中寻找'2200'
+    tmp = 0
+    same_max = 0
     if job_num_cells is None:
         error_print.append(f"{file_name}没有找到工号")
         return 0
@@ -97,15 +114,32 @@ def get_need_row(file_name):
             cell = row[job_num_cell]
             if '2200' in str(cell.value):
                 count += 1
-        if count >= 2:
+        if count >= 1:
+            if count == max_2200:
+                same_max = max_2200
+            if count > max_2200:
+                max_2200 = count
+                max_2200_num = tmp
+
             job_num_2200_cells.append(job_num_cell)
+            tmp += 1
 
     # 判断job_num_2200_cells的元素个数，返回相应的列序号
-    if len(job_num_2200_cells) == 0 or len(job_num_2200_cells) >= 2:
-        error_print.append(f"{file_name}工号列序号有问题，可能有多个或者没有，返回默认第3列")
-        job_num_2200_cell = 3  # 默认返回C列的序号
-    else:
+    if len(job_num_2200_cells) == 0:
+        error_print.append(f"{file_name}工号列下面找不到2200工号列有{job_num_cells}")
+        quit_print()
+    elif len(job_num_2200_cells) >= 2:
+        if same_max == max_2200:
+            error_print.append(f"{file_name}有多个工号列序号切2200数量一样，返回默认第2列，对应表格第3列")
+            job_num_2200_cell = 2  # 默认返回C列的序号
+        else:
+            error_print.append(f"{file_name}有多个工号列序号，返回默认数量最多的")
+            job_num_2200_cell = job_num_2200_cells[max_2200_num]  # 默认返回C列的序号
+            error_print.append(f"{file_name}max_2200_num{max_2200_num},job_num_2200_cells[]{job_num_2200_cell}")
+    elif len(job_num_2200_cells) == 1:
         job_num_2200_cell = job_num_2200_cells[0]  # 返回列表中的元素作为列序号
+    else:
+        pass
 
     # 根据真正的工号列找需要的行数
     start_row = None
@@ -114,6 +148,9 @@ def get_need_row(file_name):
         if '工号' in str(cell.value):
             start_row = cell.row
 
+    if not start_row or start_row is None:
+        error_print.append(f"{file_name}当前工号列{job_num_2200_cell}找不到'工号'")
+        quit_print()
     for row in source_sheet.iter_rows(min_row=start_row+1):
         cell = row[job_num_2200_cell]
         if '2200' in str(cell.value):
@@ -122,8 +159,8 @@ def get_need_row(file_name):
     source_wb.close()
     if need_row is None:
         error_print.append(f"{file_name}的工号列{job_num_2200_cell}找不到2200")
-        return 0
-    print(need_row)
+        quit_print()
+
     return need_row
 
 
@@ -140,11 +177,11 @@ def get_need_cell(rows_with_job, indices, file_name):
     for key, value in indices.items():
         if value == "" or value is None or value == [] or value == {}:
             error_print.append(f"{file_name}, Key: {key}, Value: {value}")
-            return 0
+            quit_print()
 
     # indices = {header: 1000 if value is None else value for header, value in indices.items()}
     source_wb.close()
-    print(indices)
+    # print(indices)
     pass
     return 1
 
@@ -160,12 +197,14 @@ def compare_fun(workbook, sheet_name_in_compare_fun, file_name):
     if not get_need_cell(rows_with_job, Compare_indices, file_name):
         return 0
 
-    # 给表创建一个标题
+    # # 给表创建一个标题
     ws = workbook[sheet_name_in_compare_fun]
     for i, value in enumerate(titleList_left):
         ws.cell(row=1, column=i + 1, value=value)
     for i, value in enumerate(titleList_right):
         ws.cell(row=1, column=i + 1 + len(titleList_left) + 1, value=value)
+    # ws = workbook.create_sheet(title=sheet_name_in_compare_fun)
+    # ws.append(titleList_left + titleList_right)
 
     # 获取单元格内容并赋值到另一个表
     source_wb = load_workbook(os.path.join(folder_path, file_name), data_only=True)
@@ -173,7 +212,7 @@ def compare_fun(workbook, sheet_name_in_compare_fun, file_name):
 
     start_row = 2
     # 循环把一行单元格数据，放到data，然后粘贴到另一个表
-    print(Compare_indices)
+    # print(Compare_indices)
     for row in rows_with_job:
         for cell in Compare_indices.values():
             # print(row,cell)
@@ -181,7 +220,7 @@ def compare_fun(workbook, sheet_name_in_compare_fun, file_name):
                 data_name.append(source_sheet.cell(row=row, column=cell).value)
 
             data.append(source_sheet.cell(row=row, column=cell).value)
-        print(data)
+        # print(data)
         for i, value in enumerate(data):
             if value is None:
                 ws.cell(row=start_row, column=i + 1 + data_len + 1, value=0)
@@ -205,7 +244,7 @@ def compare_fun(workbook, sheet_name_in_compare_fun, file_name):
 
     start_row = 2
     # 循环把一行单元格数据，放到data，然后粘贴到另一个表
-    system_workDay = input("实出勤天数：  输入0表示系统表获取  输入其他数字作为输入天数")
+    # system_workDay = input("实出勤天数：  输入0表示系统表获取  输入其他数字作为输入天数")
 
     for row in rows_with_name_summary:
         for key, cell in system_indices.items():
@@ -219,6 +258,7 @@ def compare_fun(workbook, sheet_name_in_compare_fun, file_name):
     pass
     data_name.clear()
     workbook.save(os.path.join(folder_path, compare_summary_sheet))
+    return 1
 
 
 # 去掉路径和文件名后缀，只保留文件名
@@ -260,7 +300,6 @@ def get_xls_or_sx_summary_files():
         for get_need_del_file in need_del_files:
             os.remove(os.path.join(folder_path, get_need_del_file))
         error_print.append("没有找到部门表")
-        sys.exit()
 
     if summary_files:
         print("系统导出的总表：", summary_files)
@@ -268,7 +307,7 @@ def get_xls_or_sx_summary_files():
         for get_need_del_file in need_del_files:
             os.remove(os.path.join(folder_path, get_need_del_file))
         error_print.append("没有找到系统总表")
-        sys.exit()
+        quit_print()
 
 
 # 创建工作簿
@@ -296,8 +335,8 @@ def compare_summary_file_create():
             print(f"备份已创建：{backup_name}")
             break
 
-        work = Workbook()
-        print("创建工作簿：", compare_summary_sheet)
+    work = Workbook()
+    print("创建工作簿：", compare_summary_sheet)
 
     return work
 
@@ -390,6 +429,7 @@ def compare_summary_fun():
     last_wb.save(os.path.join(folder_path, compare_summary_sheet))
 
 
+print(folder_path)
 get_xls_or_sx_summary_files()
 wb = compare_summary_file_create()
 for need_compare_file in need_compare_files:
@@ -401,3 +441,4 @@ compare_summary_fun()
 for need_del_file in need_del_files:
     os.remove(os.path.join(folder_path, need_del_file))
 input("对比完成，按任意键结束。。")
+print(error_print)
