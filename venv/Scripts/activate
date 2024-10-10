@@ -37,7 +37,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="D:\liaojq\git\fan-changyuan_compare\venv"
+VIRTUAL_ENV="G:\Python_Project\kaoqinghedui\fan-changyuan_compare\venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

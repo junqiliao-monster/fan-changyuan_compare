@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 
 import pyexcel as p
 from openpyxl import load_workbook
@@ -7,10 +8,11 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Border, Side
 
 # folder_path = os.getcwd() #用此方式获取当前工作目录在打包exe后，莫名变成系统用户的主目录，并没有获取当前目录
-folder_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+# folder_path = os.path.dirname(os.path.abspath(sys.argv[0]))
 # folder_path = "D:\\liaojq\\wechat\\20240606考勤"
 # folder_path = "C:\\Users\\Administrator\\Desktop\\Temporary file"
 # folder_path = "."
+folder_path = "G:\\Python_Project\\kaoqinghedui\\try"
 
 # print("folder_path = ", folder_path)
 xl_sx_files = []
@@ -23,7 +25,7 @@ not_need_files = "备份"
 
 # 存储需要的列数
 Compare_indices = {'姓名': None, '全勤': None, '出勤': None, '平时': None, '周末': None, '法定': None, '晚餐补贴': None, '迟到': None,
-                   '事假（天）': None, '病假（天）': None, '年假（天）': None}
+                   '事假': None, '病假': None, '年假': None}
 # 存储系统汇总表需要的列数
 system_indices = {'姓名': None, '全勤': None, '实出勤天数': None, '加班1.5': None, '加班2.0': None, '加班3.0': None, '夜班次数': None,
                   '迟到次数': None, '事假天数': None, '病假天数': None, '年休假天数': None, '转调休加班': None}
@@ -44,8 +46,11 @@ error_print = []
 
 # 异常退出
 def quit_print():
+    print('-----------------------------------------------------------------------')
+    print('-----------------------------注意警告/错误信息--------------------------')
+    for log in error_print:
+        print(log)
 
-    print(error_print)
     for l_need_del_file in need_del_files:
         os.remove(os.path.join(folder_path, l_need_del_file))
     sys.exit()
@@ -111,8 +116,10 @@ def get_need_row(file_name):
     for i, job_num_cell in enumerate(job_num_cells):
         count = 0
         for row in source_sheet.iter_rows(min_row=job_num_cells_row[i]):
+            # print(job_num_cells_row[i])
             cell = row[job_num_cell]
-            if '2200' in str(cell.value):
+            # print(str(cell.value))
+            if re.search(r'2\d00', str(cell.value)):
                 count += 1
         if count >= 1:
             if count == max_2200:
@@ -127,7 +134,7 @@ def get_need_row(file_name):
     # 判断job_num_2200_cells的元素个数，返回相应的列序号
     if len(job_num_2200_cells) == 0:
         error_print.append(f"{file_name}工号列下面找不到2200工号列有{job_num_cells}")
-        quit_print()
+        return 0
     elif len(job_num_2200_cells) >= 2:
         if same_max == max_2200:
             error_print.append(f"{file_name}有多个工号列序号切2200数量一样，返回默认第2列，对应表格第3列")
@@ -150,16 +157,16 @@ def get_need_row(file_name):
 
     if not start_row or start_row is None:
         error_print.append(f"{file_name}当前工号列{job_num_2200_cell}找不到'工号'")
-        quit_print()
+        return 0
     for row in source_sheet.iter_rows(min_row=start_row+1):
         cell = row[job_num_2200_cell]
-        if '2200' in str(cell.value):
+        if re.search(r'2\d00', str(cell.value)):
             need_row.append(cell.row)
 
     source_wb.close()
     if need_row is None:
         error_print.append(f"{file_name}的工号列{job_num_2200_cell}找不到2200")
-        quit_print()
+        return 0
 
     return need_row
 
@@ -168,6 +175,7 @@ def get_need_row(file_name):
 def get_need_cell(rows_with_job, indices, file_name):
     source_wb = load_workbook(os.path.join(folder_path, file_name), data_only=True)
     source_sheet = source_wb.worksheets[0]
+    del_flag = 0
     for row in source_sheet.iter_rows(max_row=min(rows_with_job)-1, values_only=True):
         for cell in row:
             for header in indices.keys():
@@ -177,7 +185,13 @@ def get_need_cell(rows_with_job, indices, file_name):
     for key, value in indices.items():
         if value == "" or value is None or value == [] or value == {}:
             error_print.append(f"{file_name}, Key: {key}, Value: {value}")
-            quit_print()
+            if key == "晚餐补贴":
+                indices[key] = 100
+            else:
+                del_flag = 1
+
+    if del_flag == 1:
+        quit_print()
 
     # indices = {header: 1000 if value is None else value for header, value in indices.items()}
     source_wb.close()
@@ -188,8 +202,13 @@ def get_need_cell(rows_with_job, indices, file_name):
 
 # （创建的工作簿， 工作表， 需要核对的文件名）
 def compare_fun(workbook, sheet_name_in_compare_fun, file_name):
-    # 获取所需要的行数
+    # 清空字典并将值设置为None
+    for key in Compare_indices:
+        Compare_indices[key] = None
+
+    # 获取所需要的行数（根据工号）
     rows_with_job = get_need_row(file_name)
+
     if rows_with_job is None or rows_with_job == 0:
         return 0
 
@@ -234,8 +253,35 @@ def compare_fun(workbook, sheet_name_in_compare_fun, file_name):
     # 根据名字创建字典
     data_name_indices = {item: None for item in data_name}
     # print(data_name_indices)
-    # 根据名字获取系统表的行列
-    rows_with_name_summary = from_name_get_need_row(data_name_indices, summary_files[0]).values()
+
+    # 根据名字获取系统表的行列，返回列表
+    rows_with_name_summary_dist = from_name_get_need_row(data_name_indices, summary_files[0])
+    # print(rows_with_name_summary_dist)
+    rows_with_name_summary_bak = dict(from_name_get_need_row(data_name_indices, summary_files[0]))  # 备份未被删除时要获取的行数
+    # print(rows_with_name_summary_bak)
+
+    del_flag = 0
+    keys_to_delete = []  # 用于存储需要删除的键
+    for key, value in rows_with_name_summary_dist.items():
+        if value is None:
+            error_print.append(f"{file_name}键 '{key}' 的行数为空，请检查总表是否有这个人")
+            keys_to_delete.append(key)
+            del_flag = 1
+
+    for key in keys_to_delete:
+        del rows_with_name_summary_dist[key]
+
+    if del_flag == 1:
+        # quit_print()
+        pass
+
+    rows_with_name_summary = rows_with_name_summary_dist.values()
+    # if rows_with_name_summary is None:
+    #     # 如果 rows_with_name_summary 是 None，执行一些替代的操作
+    #     print("rows_with_name_summary 是 None，进行替代处理")
+    #     # 这里添加替代处理的代码
+
+    # 根据所需要的标题，获取列数，只遍历rows_with_job（前面获取了包含2200的行）最前一行之前内容（目的是为了找标题），根据标题找列
     get_need_cell(rows_with_name_summary, system_indices, summary_files[0])
 
     # 打开总表
@@ -246,10 +292,15 @@ def compare_fun(workbook, sheet_name_in_compare_fun, file_name):
     # 循环把一行单元格数据，放到data，然后粘贴到另一个表
     # system_workDay = input("实出勤天数：  输入0表示系统表获取  输入其他数字作为输入天数")
 
-    for row in rows_with_name_summary:
+    for row in rows_with_name_summary_bak.values():
+        if row is None:
+            ws.cell(row=start_row, column=1, value="无此人")
+            start_row += 1
+            continue
         for key, cell in system_indices.items():
             data.append(source_sheet.cell(row=row, column=cell).value)
         # print(data)
+        i = 0
         for i, value in enumerate(data):
             ws.cell(row=start_row, column=i + 1, value=value)
         start_row += 1
@@ -295,14 +346,15 @@ def get_xls_or_sx_summary_files():
                     xl_s_files.append(file)
     need_compare_files = xl_sx_files + xl_s_files
     if need_compare_files:
-        print("需要核对的表：", need_compare_files)
+        print("需要核对的文件：", need_compare_files)
     else:
         for get_need_del_file in need_del_files:
             os.remove(os.path.join(folder_path, get_need_del_file))
-        error_print.append("没有找到部门表")
+        error_print.append("没有找到部门文件")
+        quit_print()
 
     if summary_files:
-        print("系统导出的总表：", summary_files)
+        print("系统导出的总文件：", summary_files)
     else:
         for get_need_del_file in need_del_files:
             os.remove(os.path.join(folder_path, get_need_del_file))
@@ -408,8 +460,38 @@ def compare_summary_fun():
 
     for sheet in last_wb.worksheets:
         for row in sheet.iter_rows(min_row=2):
-            # print(row[11].value, row[16].value + row[17].value)
-            if row[11].value == row[16].value+row[17].value:
+
+            val_3 = row[3].value if row[3].value is not None else 0
+            val_4 = row[4].value if row[4].value is not None else 0
+            val_5 = row[5].value if row[5].value is not None else 0
+
+            # 获取需要检查的值
+            val_11 = row[11].value
+            val_16 = row[16].value
+            val_17 = row[17].value
+            val_18 = row[18].value
+            str_flag = 0
+            # 检查这些值是否是字符串
+            if isinstance(val_11, str):
+                error_print.append(f"{sheet} row[11] 是字符串: {val_11}")
+                str_flag = 1
+            if isinstance(val_16, str):
+                error_print.append(f"{sheet} row[16] 是字符串: {val_16}")
+                str_flag = 1
+            if isinstance(val_17, str):
+                error_print.append(f"{sheet} row[17] 是字符串: {val_17}")
+                str_flag = 1
+            if isinstance(val_18, str):
+                error_print.append(f"{sheet} row[18] 是字符串: {val_18}")
+                str_flag = 1
+
+            if str_flag == 1:
+                quit_print()
+
+            if row[11].value == row[16].value + row[17].value + row[18].value:
+                if row[16].value+row[17].value+row[18].value == 0:
+                    if val_3 + val_4 + val_5 != 0:
+                        continue
                 row[3].fill = no_fill
                 row[3].font = black_font
                 # row[3].border = thin_border
@@ -430,15 +512,18 @@ def compare_summary_fun():
 
 
 print(folder_path)
-get_xls_or_sx_summary_files()
-wb = compare_summary_file_create()
-for need_compare_file in need_compare_files:
-    sheet_name = compare_summary_sheet_create(wb, need_compare_file)
+get_xls_or_sx_summary_files()       # 检索目录下的xls，xls转xlsx，并添加到要删除的文件列表里，获取所有xlsx文件，备份除外，获取要核对的文件，系统总文件
+wb = compare_summary_file_create()      # 创建核对结果文件，如果存在则将其改名为备份1,2，3以此类推。返回核对结果文件
+for need_compare_file in need_compare_files:        # 遍历每一个需要核对的部门文件
+    sheet_name = compare_summary_sheet_create(wb, need_compare_file)        # 根据部门文件去掉前后缀创建工作表，并删除原来工作簿的sheet空表，返回创建的表
+    compare_fun(wb, sheet_name, need_compare_file)         # 当前部门文件与总文件对比
 
-    if not compare_fun(wb, sheet_name, need_compare_file):
-        print(error_print)
 compare_summary_fun()
 for need_del_file in need_del_files:
     os.remove(os.path.join(folder_path, need_del_file))
+
+print('-----------------------------------------------------------------------')
+print('-----------------------------注意警告/错误信息--------------------------')
+for error in error_print:
+    print(error)
 input("对比完成，按任意键结束。。")
-print(error_print)
