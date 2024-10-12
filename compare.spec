@@ -3,15 +3,16 @@
 
 a = Analysis(
     ['compare.py'],
-    pathex=['./venv/Lib/site-packages'],
+    pathex=['C:/Users/Administrator/AppData/Local/Programs/Python/Python38/Lib/site-packages'],
     binaries=[],
     datas=[],
-    hiddenimports=['pyexcel_xls', 'pyexcel_xlsx', 'pyexcel_xlsxw'],
+    hiddenimports=['pyexcel_xls', 'pyexcel_xlsx', 'pyexcel_xlsxw', 'pyexcel_io.readers.csv_in_file', 'pyexcel_io.readers.csv_in_memory', 'pyexcel_io.readers.csv_content', 'pyexcel_io.readers.csvz', 'pyexcel_io.writers.csv_in_file', 'pyexcel_io.writers.csv_in_memory', 'pyexcel_io.writers.csvz_writer', 'pyexcel_io.database.importers.django', 'pyexcel_io.database.importers.sqlalchemy', 'pyexcel_io.database.exporters.django', 'pyexcel_io.database.exporters.sqlalchemy'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
+    optimize=0,
 )
 pyz = PYZ(a.pure)
 

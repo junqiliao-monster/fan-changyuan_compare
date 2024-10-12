@@ -12,7 +12,13 @@ from openpyxl.styles import PatternFill, Font, Border, Side
 # folder_path = "D:\\liaojq\\wechat\\20240606考勤"
 # folder_path = "C:\\Users\\Administrator\\Desktop\\Temporary file"
 # folder_path = "."
-folder_path = "G:\\Python_Project\\kaoqinghedui\\try"
+# folder_path = "G:\\Python_Project\\kaoqinghedui\\try"
+
+# 获取exe文件的绝对路径
+executable_path = sys.executable
+
+# 获取exe文件所在的目录
+folder_path = os.path.dirname(executable_path)
 
 # print("folder_path = ", folder_path)
 xl_sx_files = []
@@ -53,6 +59,8 @@ def quit_print():
 
     for l_need_del_file in need_del_files:
         os.remove(os.path.join(folder_path, l_need_del_file))
+
+    input("异常结束。。")
     sys.exit()
 
 
